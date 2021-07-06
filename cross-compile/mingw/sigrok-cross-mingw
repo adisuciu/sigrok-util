@@ -21,7 +21,7 @@
 set -e
 
 # Build target: "i686" (32bit) or "x86_64" (64bit).
-TARGET="i686"
+TARGET="x86_64"
 
 # The path where your MXE directory is located.
 MXE=$HOME/mxe-git
@@ -33,7 +33,7 @@ PREFIXBASE=$HOME/sr_mingw
 BUILDBASE=./build
 
 # Edit this to control verbose build output.
-# V="V=1 VERBOSE=1"
+V="V=1 VERBOSE=1"
 
 # Edit this to enable/disable/modify parallel compiles.
 PARALLEL="-j 2"
@@ -71,6 +71,7 @@ fi
 
 # We need to find tools in the toolchain.
 export PATH=$MXE/usr/bin:$PATH
+echo $TARGET
 
 TOOLCHAIN_TRIPLET="$TARGET-w64-mingw32.static.posix"
 
@@ -156,6 +157,7 @@ unzip -q $PREFIX/python34.zip *.pyd -d $PREFIX
 $WGET https://github.com/pbatard/libwdi/releases/download/b721/zadig-2.4.exe -O $PREFIX/zadig.exe
 $WGET https://github.com/pbatard/libwdi/releases/download/v1.2.5/zadig_xp-2.2.exe -O $PREFIX/zadig_xp.exe
 
+HOMEDIR=$(pwd)
 # libserialport
 $GIT_CLONE $REPO_BASE/libserialport
 cd libserialport
@@ -163,27 +165,83 @@ cd libserialport
 ./configure $C $L
 make $PARALLEL $V
 make install $V
-cd ..
+cd $HOMEDIR
+
+#libxml2
+$GIT_CLONE https://github.com/GNOME/libxml2
+cd libxml2
+mkdir build
+cd build
+$CMAKE \
+	-DCMAKE_INSTALL_PREFIX:PATH=$PREFIX \
+	-DCMAKE_BUILD_TYPE=$BUILD_TYPE \
+	-DBUILD_SHARED_LIBS=ON \
+	-DLIBXML2_WITH_PYTHON=OFF \
+	../
+make $PARALLEL $V
+make install $V 
+#DESTDIR=$PREFIX
+cd $HOMEDIR
+
+# libiio
+$GIT_CLONE https://github.com/analogdevicesinc/libiio 
+cd libiio
+mkdir build
+cd build
+$CMAKE \
+	-DCMAKE_INSTALL_PREFIX:PATH=$PREFIX \
+	-DCMAKE_BUILD_TYPE=$BUILD_TYPE \
+	-DCMAKE_FIND_ROOT_PATH="$MXE;$PREFIX" \
+	-DHAVE_DNS_SD=OFF \
+	-DENABLE_IPV6=OFF \
+	-DBUILD_SHARED_LIBS=ON \
+	-DWITH_TESTS=OFF\
+	../
+#	-DCMAKE_FIND_DEBUG_MODE=ON \
+make $PARALLEL $V
+make install $V
+cd $HOMEDIR
+
+# libm2k
+$GIT_CLONE https://github.com/analogdevicesinc/libm2k --branch pc_fix
+cd libm2k
+mkdir build
+cd build
+
+$CMAKE \
+	-DCMAKE_INSTALL_PREFIX:PATH=$PREFIX \
+	-DCMAKE_BUILD_TYPE=$BUILD_TYPE \
+	-DCMAKE_FIND_ROOT_PATH="$MXE;$PREFIX" \
+	-DENABLE_PYTHON=OFF \
+	-DBUILD_SHARED_LIBS=ON \
+	../
+	#-DBUILD_STATIC_LIBS=ON \
+
+echo make $PARALLEL $V CXXFLAGS="-I$PREFIX"
+make $PARALLEL $V CXXFLAGS="-I$PREFIX"
+make install $V
+cd $HOMEDIR
 
 # libsigrok
-$GIT_CLONE $REPO_BASE/libsigrok
+$GIT_CLONE https://github.com/adisuciu/libsigrok --branch adalm2000
 cd libsigrok
 ./autogen.sh
-./configure $C $L
-make $PARALLEL $V
+./configure $C $L --verbose
+echo make $PARALLEL $V CXXFLAGS="-I$PREFIX/include"
+make $PARALLEL $V CXXFLAGS="-I$PREFIX/include"
 make install $V
 cd ..
 
 # libsigrokdecode
 $GIT_CLONE $REPO_BASE/libsigrokdecode
 cd libsigrokdecode
-./autogen.sh
+./autogen.sh --verbose
 ./configure $C $L
 make $PARALLEL $V
 make install $V
 cd ..
 
-# sigrok-firmware
+## sigrok-firmware
 $GIT_CLONE $REPO_BASE/sigrok-firmware
 cd sigrok-firmware
 ./autogen.sh
@@ -212,7 +270,7 @@ cd ..
 $GIT_CLONE $REPO_BASE/sigrok-cli
 cd sigrok-cli
 ./autogen.sh
-./configure $C
+./configure $C 
 make $PARALLEL $V
 make install $V
 if [ $TARGET = "i686" ]; then
@@ -223,6 +281,7 @@ fi
 cd ..
 
 # PulseView
+pwd
 $GIT_CLONE $REPO_BASE/pulseview
 cd pulseview
 cp ../../FileAssociation.nsh contrib
